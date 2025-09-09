@@ -1,26 +1,34 @@
 import { fromHono } from "chanfana";
 import { Hono } from "hono";
-import { TaskCreate } from "./endpoints/taskCreate";
-import { TaskDelete } from "./endpoints/taskDelete";
-import { TaskFetch } from "./endpoints/taskFetch";
-import { TaskList } from "./endpoints/taskList";
+import { IssuePage } from "./endpoints/issuePage";
+import { IssueApi } from "./endpoints/issueApi";
+import { VoucherDisplay } from "./endpoints/voucherDisplay";
+import { ScanPage } from "./endpoints/scanPage";
+import { RedeemApi } from "./endpoints/redeemApi";
+import { StatusPage } from "./endpoints/statusPage";
+import { StatusApi } from "./endpoints/statusApi";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
 
 // Setup OpenAPI registry
 const openapi = fromHono(app, {
-	docs_url: "/",
+	docs_url: "/docs",
 });
 
-// Register OpenAPI endpoints
-openapi.get("/api/tasks", TaskList);
-openapi.post("/api/tasks", TaskCreate);
-openapi.get("/api/tasks/:taskSlug", TaskFetch);
-openapi.delete("/api/tasks/:taskSlug", TaskDelete);
+// Register voucher pages
+openapi.get("/issue", IssuePage);
+openapi.get("/voucher/:token", VoucherDisplay);
+openapi.get("/scan", ScanPage);
+openapi.get("/status", StatusPage);
 
-// You may also register routes for non OpenAPI directly on Hono
-// app.get('/test', (c) => c.text('Hono!'))
+// Register API endpoints
+openapi.post("/api/issue", IssueApi);
+openapi.post("/api/redeem", RedeemApi);
+openapi.get("/api/status", StatusApi);
+
+// Root redirect to issue page
+app.get("/", (c) => c.redirect("/issue"));
 
 // Export the Hono app
 export default app;

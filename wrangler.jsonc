@@ -9,7 +9,21 @@
 	"compatibility_date": "2025-09-09",
 	"observability": {
 		"enabled": true
-	}
+	},
+	"kv_namespaces": [
+		{
+			"binding": "VOUCHERS",
+			"id": "7def15cf2efb4c509d1538b0ac71741e",
+			"preview_id": "massage-vouchers-preview"
+		}
+	],
+	/**
+	 * Environment Variables for User Authentication
+	 */
+	"vars": {
+		"USER1_EMAIL": "xup6easier@gmail.com",
+		"USER2_EMAIL": "shirley0308222@gmail.com"
+	},
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
