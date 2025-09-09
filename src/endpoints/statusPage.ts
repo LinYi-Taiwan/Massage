@@ -53,6 +53,27 @@ export class StatusPage extends OpenAPIRoute {
 			// Sort vouchers by issued date (newest first)
 			userVouchers.sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime());
 			
+			// Separate issued and received vouchers
+			const issuedVouchers = userVouchers.filter(voucher => {
+				const isNewFormat = voucher.issuer.includes('@');
+				if (isNewFormat) {
+					return voucher.issuer === user.email;
+				} else {
+					// For legacy format, assume all are issued by current user
+					return true;
+				}
+			});
+			
+			const receivedVouchers = userVouchers.filter(voucher => {
+				const isNewFormat = voucher.issuer.includes('@');
+				if (isNewFormat) {
+					return voucher.recipient === user.email;
+				} else {
+					// For legacy format, no received vouchers
+					return false;
+				}
+			});
+			
 			// Calculate statistics
 			const total = userVouchers.length;
 			const unused = userVouchers.filter(v => v.status === 'unused').length;
@@ -129,30 +150,64 @@ export class StatusPage extends OpenAPIRoute {
         .unused { color: #34C759; }
         .used { color: #FF9500; }
         
-        .voucher-list {
+        .voucher-section {
             background: white;
             border-radius: 16px;
             overflow: hidden;
             box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            margin-bottom: 30px;
         }
-        .voucher-list h2 {
+        .voucher-section h2 {
             margin: 0;
             padding: 25px 30px;
             background: #f8f9fa;
             font-size: 24px;
             font-weight: 600;
             border-bottom: 1px solid #e9ecef;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .section-count {
+            background: #007AFF;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
         }
         .voucher-item {
             padding: 20px 30px;
             border-bottom: 1px solid #f0f0f0;
-            transition: background 0.2s;
+            transition: background 0.2s, transform 0.1s;
+            position: relative;
         }
         .voucher-item:hover {
             background: #f8f9fa;
         }
         .voucher-item:last-child {
             border-bottom: none;
+        }
+        .voucher-item.clickable {
+            cursor: pointer;
+        }
+        .voucher-item.clickable:hover {
+            background: #e3f2fd;
+            transform: translateY(-1px);
+        }
+        .voucher-item.clickable::after {
+            content: '🔍 點擊查看 QR Code';
+            position: absolute;
+            right: 30px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 12px;
+            color: #007AFF;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .voucher-item.clickable:hover::after {
+            opacity: 1;
         }
         .voucher-header {
             display: flex;
@@ -259,6 +314,95 @@ export class StatusPage extends OpenAPIRoute {
             box-shadow: 0 6px 20px rgba(0,123,255,0.4);
         }
         
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s ease;
+        }
+        .modal-content {
+            background-color: white;
+            margin: 10% auto;
+            padding: 0;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 450px;
+            position: relative;
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 20px 20px 0 0;
+            text-align: center;
+            position: relative;
+        }
+        .close {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        .close:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        .modal-body {
+            padding: 30px;
+            text-align: center;
+        }
+        .qr-display {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border: 2px dashed #ddd;
+        }
+        .qr-display img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+        .modal-voucher-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        .modal-voucher-info p {
+            margin: 8px 0;
+            color: #555;
+        }
+        .modal-voucher-info strong {
+            color: #333;
+        }
+        
         @media (max-width: 768px) {
             .voucher-header {
                 flex-direction: column;
@@ -272,6 +416,13 @@ export class StatusPage extends OpenAPIRoute {
             .actions .btn {
                 display: block;
                 margin: 10px 0;
+            }
+            .voucher-item.clickable::after {
+                display: none;
+            }
+            .modal-content {
+                width: 95%;
+                margin: 5% auto;
             }
         }
     </style>
@@ -301,27 +452,19 @@ export class StatusPage extends OpenAPIRoute {
             </div>
         </div>
         
-        <div class="voucher-list">
-            <h2>券清單</h2>
-            ${total === 0 ? `
-                <div class="empty-state">
-                    <div class="emoji">🎫</div>
-                    <h3>還沒有任何券</h3>
-                    <p>開始發放第一張按摩券吧！</p>
-                </div>
-            ` : userVouchers.map(voucher => `
-                <div class="voucher-item">
+        ${issuedVouchers.length > 0 ? `
+        <div class="voucher-section">
+            <h2>📤 我發出的券 <span class="section-count">${issuedVouchers.length}</span></h2>
+            ${issuedVouchers.map(voucher => `
+                <div class="voucher-item ${voucher.status === 'unused' ? 'clickable' : ''}" 
+                     ${voucher.status === 'unused' ? `onclick="showQRCode('${voucher.id}', '${voucher.recipient}', '${voucher.issuedAt}')"` : ''}>
                     <div class="voucher-header">
                         <div class="voucher-id">${voucher.id.substring(0, 8)}...</div>
                         <div class="voucher-status status-${voucher.status}">
-                            ${voucher.status === 'unused' ? '🎫 未使用' : '✅ 已使用'}
+                            ${voucher.status === 'unused' ? '🎫 等待兌換' : '✅ 已兌換'}
                         </div>
                     </div>
                     <div class="voucher-details">
-                        <div class="detail-item">
-                            <div class="detail-label">發券人</div>
-                            <div class="detail-value">${voucher.issuer}</div>
-                        </div>
                         <div class="detail-item">
                             <div class="detail-label">接收人</div>
                             <div class="detail-value">${voucher.recipient}</div>
@@ -340,6 +483,50 @@ export class StatusPage extends OpenAPIRoute {
                 </div>
             `).join('')}
         </div>
+        ` : ''}
+        
+        ${receivedVouchers.length > 0 ? `
+        <div class="voucher-section">
+            <h2>📥 我收到的券 <span class="section-count">${receivedVouchers.length}</span></h2>
+            ${receivedVouchers.map(voucher => `
+                <div class="voucher-item ${voucher.status === 'unused' ? 'clickable' : ''}" 
+                     ${voucher.status === 'unused' ? `onclick="showQRCode('${voucher.id}', '${voucher.issuer}', '${voucher.issuedAt}')"` : ''}>
+                    <div class="voucher-header">
+                        <div class="voucher-id">${voucher.id.substring(0, 8)}...</div>
+                        <div class="voucher-status status-${voucher.status}">
+                            ${voucher.status === 'unused' ? '🎫 可使用' : '✅ 已使用'}
+                        </div>
+                    </div>
+                    <div class="voucher-details">
+                        <div class="detail-item">
+                            <div class="detail-label">發券人</div>
+                            <div class="detail-value">${voucher.issuer}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">發放時間</div>
+                            <div class="detail-value">${new Date(voucher.issuedAt).toLocaleString('zh-TW')}</div>
+                        </div>
+                        ${voucher.redeemedAt ? `
+                            <div class="detail-item">
+                                <div class="detail-label">兌換時間</div>
+                                <div class="detail-value">${new Date(voucher.redeemedAt).toLocaleString('zh-TW')}</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+        ` : ''}
+        
+        ${total === 0 ? `
+        <div class="voucher-section">
+            <div class="empty-state">
+                <div class="emoji">🎫</div>
+                <h3>還沒有任何券</h3>
+                <p>開始發放第一張按摩券吧！</p>
+            </div>
+        </div>
+        ` : ''}
         
         <div class="actions">
             <a href="/issue" class="btn">📝 發放新券</a>
@@ -350,6 +537,74 @@ export class StatusPage extends OpenAPIRoute {
     <button class="refresh-btn" onclick="location.reload()" title="重新整理">
         🔄
     </button>
+    
+    <!-- QR Code Modal -->
+    <div id="qrModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="close" onclick="closeModal()">&times;</span>
+                <h2>💆‍♀️ 按摩券 QR Code</h2>
+            </div>
+            <div class="modal-body">
+                <div class="modal-voucher-info">
+                    <p><strong>券號:</strong> <span id="modalVoucherId"></span></p>
+                    <p><strong>相關人員:</strong> <span id="modalOtherPerson"></span></p>
+                    <p><strong>發放時間:</strong> <span id="modalIssuedAt"></span></p>
+                </div>
+                <div class="qr-display">
+                    <div id="qrCodeContainer">載入中...</div>
+                </div>
+                <div class="instructions">
+                    <p>請出示此 QR Code 進行兌換</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        async function showQRCode(voucherId, otherPerson, issuedAt) {
+            // Show modal
+            document.getElementById('qrModal').style.display = 'block';
+            
+            // Update modal content
+            document.getElementById('modalVoucherId').textContent = voucherId.substring(0, 8) + '...';
+            document.getElementById('modalOtherPerson').textContent = otherPerson;
+            document.getElementById('modalIssuedAt').textContent = new Date(issuedAt).toLocaleString('zh-TW');
+            document.getElementById('qrCodeContainer').innerHTML = '載入中...';
+            
+            try {
+                // Generate QR code using online service
+                const voucherUrl = window.location.origin + '/voucher/' + voucherId;
+                const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(voucherUrl);
+                
+                document.getElementById('qrCodeContainer').innerHTML = 
+                    '<img src="' + qrUrl + '" alt="QR Code" style="max-width: 100%; height: auto;">';
+                    
+            } catch (error) {
+                console.error('Error generating QR code:', error);
+                document.getElementById('qrCodeContainer').innerHTML = '生成 QR Code 時發生錯誤';
+            }
+        }
+        
+        function closeModal() {
+            document.getElementById('qrModal').style.display = 'none';
+        }
+        
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('qrModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+        
+        // Close modal on Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeModal();
+            }
+        });
+    </script>
 </body>
 </html>`;
 

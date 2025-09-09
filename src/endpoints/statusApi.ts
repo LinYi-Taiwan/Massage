@@ -70,6 +70,27 @@ export class StatusApi extends OpenAPIRoute {
 			// Sort vouchers by issued date (newest first)
 			userVouchers.sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime());
 			
+			// Separate issued and received vouchers
+			const issuedVouchers = userVouchers.filter(voucher => {
+				const isNewFormat = voucher.issuer.includes('@');
+				if (isNewFormat) {
+					return voucher.issuer === user.email;
+				} else {
+					// For legacy format, assume all are issued by current user
+					return true;
+				}
+			});
+			
+			const receivedVouchers = userVouchers.filter(voucher => {
+				const isNewFormat = voucher.issuer.includes('@');
+				if (isNewFormat) {
+					return voucher.recipient === user.email;
+				} else {
+					// For legacy format, no received vouchers
+					return false;
+				}
+			});
+			
 			// Calculate statistics
 			const total = userVouchers.length;
 			const unused = userVouchers.filter(v => v.status === 'unused').length;
@@ -80,6 +101,8 @@ export class StatusApi extends OpenAPIRoute {
 				unused,
 				used,
 				vouchers: userVouchers,
+				issuedVouchers,
+				receivedVouchers,
 			});
 			
 		} catch (error) {
